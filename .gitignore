@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.egg-info/
+.DS_Store
+last.wav
+.last.sig
+daemon.log
+.aloud.sock
+sessions/
+HANDOFF.md
