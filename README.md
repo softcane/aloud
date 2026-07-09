@@ -53,8 +53,6 @@ When you send the next prompt, Aloud deletes the old cached audio so the next re
 
 Each session arms itself. If session A speaks a summary, `Cmd + Ctrl + H` reads session A's full reply even if session B finishes later in the background.
 
-If two armed sessions finish together, the newer summary interrupts the older one. The full-reply hotkey then follows the newer voice.
-
 ## Files Aloud Writes
 
 - `~/Library/Application Support/Aloud`: session registry and socket.
@@ -83,12 +81,9 @@ launchctl load ~/Library/LaunchAgents/io.aloud.daemon.plist
 
 ## How It Works
 
-Claude Code and Codex run the same two hooks:
+Claude Code and Codex run two hooks. One hook arms or disarms the current session and blocks the control phrase from reaching the agent. The other records each completed reply and asks the helper to speak when the session is armed.
 
-- `aloud_on_prompt.py` arms or disarms the current session and blocks the control phrase from reaching the agent.
-- `aloud_on_stop.py` records the cleaned assistant reply and asks the helper to speak when the session is armed.
-
-The hooks use only the Python standard library. The daemon, `aloud_daemon.py`, keeps Kokoro loaded, turns text into `last.wav`, and plays it with `afplay`.
+The hooks use only the Python standard library. The helper keeps Kokoro loaded, turns text into `last.wav`, and plays it with `afplay`.
 
 ## Troubleshooting
 
@@ -114,24 +109,15 @@ If hotkeys do nothing, confirm Hammerspoon has Accessibility permission.
 
 ## Remove
 
-Unload the helper:
+Unload the helper and remove Aloud's files:
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/io.aloud.daemon.plist
+rm ~/Library/LaunchAgents/io.aloud.daemon.plist
+rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Logs/Aloud
 ```
 
-Then remove:
-
-- `~/Library/LaunchAgents/io.aloud.daemon.plist`
-- the Aloud block in `~/.hammerspoon/init.lua`
-- `~/.claude/commands/aloud-on.md` and `~/.claude/commands/aloud-off.md`
-- `~/.codex/prompts/aloud-on.md` and `~/.codex/prompts/aloud-off.md`
-- the Aloud hook entries in `~/.claude/settings.json` and `~/.codex/hooks.json`
-- `~/Library/Application Support/Aloud`
-- `~/Library/Caches/Aloud`
-- `~/Library/Logs/Aloud`
-
-The installers leave timestamped settings backups.
+Then remove the Aloud block from `~/.hammerspoon/init.lua`, delete the Aloud command files from `~/.claude/commands` and `~/.codex/prompts`, and remove the Aloud hook entries from `~/.claude/settings.json` and `~/.codex/hooks.json`. The installers leave timestamped settings backups.
 
 ## Credits
 
