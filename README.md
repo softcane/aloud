@@ -1,16 +1,16 @@
 # Aloud
 
-Aloud reads Claude Code and Codex replies out loud on macOS.
+Aloud reads Claude Code and Codex replies aloud on macOS.
 
-Turn it on inside a session with `/aloud-on`. Aloud speaks a short summary after each reply. Press `Cmd + Ctrl + H` to hear the full reply, or `Cmd + Ctrl + .` to stop playback.
+Turn it on with `/aloud-on` in any session. Aloud speaks a short summary after each assistant reply. Use `Cmd + Ctrl + H` for the full reply, or `Cmd + Ctrl + .` to stop playback.
 
-Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text to speech. `pip install .` installs the Kokoro Python package. Kokoro downloads its model files from Hugging Face the first time speech generation starts, then reuses the local cache. Agent replies are not sent to an external TTS service.
+Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text-to-speech. The Python package installs Kokoro. Kokoro downloads its model files the first time speech generation starts, then reuses the local cache. Aloud does not send agent replies to an external TTS service.
 
 ## Requirements
 
 - macOS.
-- Python 3.11 or 3.12. Kokoro does not publish wheels for Python 3.13+ yet.
-- [Homebrew](https://brew.sh), used by `.venv/bin/aloud install` for `espeak-ng` and Hammerspoon if they are missing.
+- Python 3.11 or 3.12.
+- [Homebrew](https://brew.sh).
 - Claude Code, Codex CLI, or both.
 
 ## Install
@@ -23,44 +23,20 @@ python3.11 -m venv .venv
 .venv/bin/aloud install
 ```
 
-Use a permanent directory, such as `~/code/aloud`. Do not install from `/tmp` unless you only want a throwaway test, because the background daemon points at the venv you install from.
+Restart Claude Code or Codex after install. In Codex, open `/hooks` and trust the Aloud hooks. In macOS System Settings, give Hammerspoon Accessibility permission for the hotkeys.
 
-If `git clone` says `destination path 'aloud' already exists`, either update that checkout:
+The installer:
 
-```bash
-cd aloud
-git pull --ff-only
-```
-
-or clone into a new directory:
-
-```bash
-git clone https://github.com/softcane/aloud.git aloud-fresh
-cd aloud-fresh
-```
-
-If you use the venv command above, run Aloud as `.venv/bin/aloud`. You can also activate the venv first and then run `aloud`:
-
-```bash
-. .venv/bin/activate
-aloud doctor
-```
-
-`.venv/bin/aloud install` does this:
-
-- writes a launchd plist for the background daemon;
-- creates Aloud state, cache, and log directories under `~/Library`;
+- creates the Aloud config, cache, log, and session directories;
+- starts a launchd daemon for speech generation;
 - installs Hammerspoon hotkeys;
-- installs `/aloud-on` and `/aloud-off` for Claude Code and Codex;
-- merges Aloud hooks into Claude Code and Codex settings.
-
-The installer backs up existing hook settings before it edits them. Claude Code hooks go in `~/.claude/settings.json`. Codex hooks go in `~/.codex/hooks.json`.
-
-After install, restart Claude Code or Codex. In Codex, run `/hooks` and trust the Aloud hooks when Codex asks. Hammerspoon also needs Accessibility permission in macOS System Settings.
+- installs `/aloud-on` and `/aloud-off`;
+- merges Aloud hooks into Claude Code and Codex settings;
+- writes timestamped backups before editing hook settings.
 
 ## Use
 
-Inside a Claude Code or Codex session:
+Inside Claude Code or Codex:
 
 ```text
 /aloud-on
@@ -76,7 +52,7 @@ Controls:
 - `.venv/bin/aloud full`: speak the full reply from a terminal.
 - `.venv/bin/aloud stop`: stop playback from a terminal.
 
-Multiple sessions are tracked separately. If session A speaks, the full-reply hotkey reads session A even if session B finishes in the background.
+Multiple sessions are tracked separately. If session A speaks, the full-reply hotkey reads session A even if session B finishes later.
 
 ## Commands
 
@@ -85,17 +61,14 @@ Multiple sessions are tracked separately. If session A speaks, the full-reply ho
 .venv/bin/aloud self-test --no-audio
 .venv/bin/aloud voices
 .venv/bin/aloud voices --play
-.venv/bin/aloud daemon
-.venv/bin/aloud hook prompt
-.venv/bin/aloud hook stop
 .venv/bin/aloud uninstall
 ```
 
-`doctor` checks the local install. `self-test --no-audio` checks the registry and hook path without using Kokoro or audio hardware. `voices --play` uses Kokoro and your current macOS output device.
+`doctor` checks the installed files and hooks. `self-test --no-audio` checks the registry without using Kokoro or audio hardware. `voices --play` previews Kokoro voices on the current macOS output device.
 
 ## Files
 
-Aloud keeps mutable files out of the repo:
+Aloud writes mutable files under `~/Library`:
 
 - config: `~/Library/Application Support/Aloud/config.json`
 - socket and session registry: `~/Library/Application Support/Aloud/`
@@ -103,20 +76,22 @@ Aloud keeps mutable files out of the repo:
 - daemon log: `~/Library/Logs/Aloud/daemon.log`
 - launchd plist: `~/Library/LaunchAgents/io.aloud.daemon.plist`
 
-Edit `config.json` to change the voice or speed, then restart the daemon:
+Edit `config.json` to change voice, speed, or retention settings.
 
 ```bash
 launchctl unload ~/Library/LaunchAgents/io.aloud.daemon.plist
 launchctl load -w ~/Library/LaunchAgents/io.aloud.daemon.plist
 ```
 
-## Remove
+## Uninstall
 
 ```bash
 .venv/bin/aloud uninstall
 ```
 
-Uninstall removes the daemon plist, Aloud hotkeys, slash commands, and hook entries. It leaves state, cache, and logs in place so you can inspect them. Delete these manually if you want a full cleanup:
+Uninstall removes the launchd plist, Hammerspoon hotkeys, slash commands, and hook entries. It leaves state, cache, and logs in place for inspection.
+
+To remove those files too:
 
 ```bash
 rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Logs/Aloud
@@ -125,6 +100,7 @@ rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Log
 ## Development
 
 ```bash
+.venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
 .venv/bin/pytest
@@ -132,7 +108,7 @@ rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Log
 .venv/bin/aloud self-test --no-audio
 ```
 
-Before a release, also run live smoke tests in Claude Code and Codex CLI, then run one real audio smoke with your current default output device.
+Before release, also run live smoke tests in Claude Code and Codex CLI, then run one real audio smoke on the current macOS output device.
 
 ## Credits
 
