@@ -10,7 +10,7 @@ Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text to speech.
 
 - macOS.
 - Python 3.11 or 3.12. Kokoro does not publish wheels for Python 3.13+ yet.
-- [Homebrew](https://brew.sh), used by `aloud install` for `espeak-ng` and Hammerspoon if they are missing.
+- [Homebrew](https://brew.sh), used by `.venv/bin/aloud install` for `espeak-ng` and Hammerspoon if they are missing.
 - Claude Code, Codex CLI, or both.
 
 ## Install
@@ -23,7 +23,30 @@ python3.11 -m venv .venv
 .venv/bin/aloud install
 ```
 
-`aloud install` does this:
+Use a permanent directory, such as `~/code/aloud`. Do not install from `/tmp` unless you only want a throwaway test, because the background daemon points at the venv you install from.
+
+If `git clone` says `destination path 'aloud' already exists`, either update that checkout:
+
+```bash
+cd aloud
+git pull --ff-only
+```
+
+or clone into a new directory:
+
+```bash
+git clone https://github.com/softcane/aloud.git aloud-fresh
+cd aloud-fresh
+```
+
+If you use the venv command above, run Aloud as `.venv/bin/aloud`. You can also activate the venv first and then run `aloud`:
+
+```bash
+. .venv/bin/activate
+aloud doctor
+```
+
+`.venv/bin/aloud install` does this:
 
 - writes a launchd plist for the background daemon;
 - creates Aloud state, cache, and log directories under `~/Library`;
@@ -50,25 +73,25 @@ Controls:
 - `/aloud-off`: stop speaking this session.
 - `Cmd + Ctrl + H`: speak the full reply from the last session Aloud spoke.
 - `Cmd + Ctrl + .`: stop playback.
-- `aloud full`: speak the full reply from a terminal.
-- `aloud stop`: stop playback from a terminal.
+- `.venv/bin/aloud full`: speak the full reply from a terminal.
+- `.venv/bin/aloud stop`: stop playback from a terminal.
 
 Multiple sessions are tracked separately. If session A speaks, the full-reply hotkey reads session A even if session B finishes in the background.
 
 ## Commands
 
 ```bash
-aloud doctor
-aloud self-test --no-audio
-aloud voices
-aloud voices --play
-aloud daemon
-aloud hook prompt
-aloud hook stop
-aloud uninstall
+.venv/bin/aloud doctor
+.venv/bin/aloud self-test --no-audio
+.venv/bin/aloud voices
+.venv/bin/aloud voices --play
+.venv/bin/aloud daemon
+.venv/bin/aloud hook prompt
+.venv/bin/aloud hook stop
+.venv/bin/aloud uninstall
 ```
 
-`aloud doctor` checks the local install. `aloud self-test --no-audio` checks the registry and hook path without using Kokoro or audio hardware. `aloud voices --play` uses Kokoro and your current macOS output device.
+`doctor` checks the local install. `self-test --no-audio` checks the registry and hook path without using Kokoro or audio hardware. `voices --play` uses Kokoro and your current macOS output device.
 
 ## Files
 
@@ -90,7 +113,7 @@ launchctl load -w ~/Library/LaunchAgents/io.aloud.daemon.plist
 ## Remove
 
 ```bash
-aloud uninstall
+.venv/bin/aloud uninstall
 ```
 
 Uninstall removes the daemon plist, Aloud hotkeys, slash commands, and hook entries. It leaves state, cache, and logs in place so you can inspect them. Delete these manually if you want a full cleanup:
