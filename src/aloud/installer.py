@@ -188,14 +188,18 @@ def remove_hammerspoon_block(result: InstallResult) -> None:
 
 
 def install_agent_commands(result: InstallResult) -> None:
-    for target in (Path.home() / ".claude" / "commands", Path.home() / ".codex" / "prompts"):
+    targets = (
+        (Path.home() / ".claude" / "commands", "installed Claude Code commands"),
+        (Path.home() / ".codex" / "prompts", "installed Codex prompt shortcuts"),
+    )
+    for target, message in targets:
         if not target.parent.exists():
             continue
         target.mkdir(parents=True, exist_ok=True)
         for name in ("aloud-on.md", "aloud-off.md"):
             content = files("aloud.commands").joinpath(name).read_text()
             write_text_with_backup(target / name, content, result)
-        result.add(f"installed slash commands in {target}")
+        result.add(f"{message} in {target}")
 
 
 def remove_agent_commands(result: InstallResult) -> None:

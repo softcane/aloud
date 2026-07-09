@@ -2,7 +2,7 @@
 
 Aloud reads Claude Code and Codex replies aloud on macOS.
 
-Turn it on with `/aloud-on` in any session. Aloud speaks a short summary after each assistant reply. Use `Cmd + Ctrl + H` for the full reply, or `Cmd + Ctrl + .` to stop playback.
+Turn it on with `aloud on` in any Claude Code or Codex session. Aloud speaks a short summary after each assistant reply. Use `Cmd + Ctrl + H` for the full reply, or `Cmd + Ctrl + .` to stop playback.
 
 Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text-to-speech. The Python package installs Kokoro. Kokoro downloads its model files the first time speech generation starts, then reuses the local cache. Aloud does not send agent replies to an external TTS service.
 
@@ -30,7 +30,7 @@ The installer:
 - creates the Aloud config, cache, log, and session directories;
 - starts a launchd daemon for speech generation;
 - installs Hammerspoon hotkeys;
-- installs `/aloud-on` and `/aloud-off`;
+- installs Claude Code commands and Codex prompt shortcuts;
 - merges Aloud hooks into Claude Code and Codex settings;
 - writes timestamped backups before editing hook settings.
 
@@ -39,14 +39,16 @@ The installer:
 Inside Claude Code or Codex:
 
 ```text
-/aloud-on
+aloud on
 ```
 
-Aloud arms only that session. Later replies in that session speak a short summary. The agent does not receive `/aloud-on` as a prompt.
+Aloud arms only that session. Later replies in that session speak a short summary. The agent does not receive `aloud on` as a prompt.
+
+Claude Code also supports `/aloud-on` and `/aloud-off`. In Codex, use `aloud on` and `aloud off`; Codex prompt shortcuts are available as `/prompts:aloud-on` and `/prompts:aloud-off` after Codex reloads its prompt list.
 
 Controls:
 
-- `/aloud-off`: stop speaking this session.
+- `aloud off`: stop speaking this session.
 - `Cmd + Ctrl + H`: speak the full reply from the last session Aloud spoke.
 - `Cmd + Ctrl + .`: stop playback.
 - `aloud full`: speak the full reply from a terminal.
@@ -90,7 +92,7 @@ aloud uninstall
 pipx uninstall aloud
 ```
 
-Uninstall removes the launchd plist, Hammerspoon hotkeys, slash commands, and hook entries. It leaves state, cache, and logs in place for inspection.
+Uninstall removes the launchd plist, Hammerspoon hotkeys, Claude Code commands, Codex prompt shortcuts, and hook entries. It leaves state, cache, and logs in place for inspection.
 
 To remove those files too:
 
