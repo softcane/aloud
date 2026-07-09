@@ -16,11 +16,11 @@ Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text-to-speech.
 ## Install
 
 ```bash
-git clone https://github.com/softcane/aloud.git
-cd aloud
-python3.11 -m venv .venv
-.venv/bin/python -m pip install .
-.venv/bin/aloud install
+brew install python@3.11 pipx
+pipx ensurepath
+pipx install --python python3.11 git+https://github.com/softcane/aloud.git
+aloud install
+aloud doctor
 ```
 
 Restart Claude Code or Codex after install. In Codex, open `/hooks` and trust the Aloud hooks. In macOS System Settings, give Hammerspoon Accessibility permission for the hotkeys.
@@ -49,19 +49,19 @@ Controls:
 - `/aloud-off`: stop speaking this session.
 - `Cmd + Ctrl + H`: speak the full reply from the last session Aloud spoke.
 - `Cmd + Ctrl + .`: stop playback.
-- `.venv/bin/aloud full`: speak the full reply from a terminal.
-- `.venv/bin/aloud stop`: stop playback from a terminal.
+- `aloud full`: speak the full reply from a terminal.
+- `aloud stop`: stop playback from a terminal.
 
 Multiple sessions are tracked separately. If session A speaks, the full-reply hotkey reads session A even if session B finishes later.
 
 ## Commands
 
 ```bash
-.venv/bin/aloud doctor
-.venv/bin/aloud self-test --no-audio
-.venv/bin/aloud voices
-.venv/bin/aloud voices --play
-.venv/bin/aloud uninstall
+aloud doctor
+aloud self-test --no-audio
+aloud voices
+aloud voices --play
+aloud uninstall
 ```
 
 `doctor` checks the installed files and hooks. `self-test --no-audio` checks the registry without using Kokoro or audio hardware. `voices --play` previews Kokoro voices on the current macOS output device.
@@ -86,7 +86,8 @@ launchctl load -w ~/Library/LaunchAgents/io.aloud.daemon.plist
 ## Uninstall
 
 ```bash
-.venv/bin/aloud uninstall
+aloud uninstall
+pipx uninstall aloud
 ```
 
 Uninstall removes the launchd plist, Hammerspoon hotkeys, slash commands, and hook entries. It leaves state, cache, and logs in place for inspection.
@@ -100,6 +101,9 @@ rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Log
 ## Development
 
 ```bash
+git clone https://github.com/softcane/aloud.git
+cd aloud
+python3.11 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
