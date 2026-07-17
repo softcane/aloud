@@ -115,7 +115,7 @@ def _attention_payload(
         "session_id": session_id,
         "transcript_path": str(transcript_path),
         "cwd": _first_text(obj, "cwd", "working_directory", "project"),
-        "turn_id": _first_text(obj, "turn_id", "request_id", "id"),
+        "turn_id": _turn_id(obj),
     }
     payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
     name = _first_text(payload, "name", "tool_name", "toolName")
@@ -179,4 +179,19 @@ def _first_text(data: dict[str, Any], *keys: str) -> str:
         value = data.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return ""
+
+
+def _turn_id(obj: dict[str, Any]) -> str:
+    for data in (obj, obj.get("payload")):
+        if not isinstance(data, dict):
+            continue
+        value = _first_text(data, "turn_id", "request_id", "id")
+        if value:
+            return value
+        metadata = data.get("internal_chat_message_metadata_passthrough")
+        if isinstance(metadata, dict):
+            value = _first_text(metadata, "turn_id", "request_id", "id")
+            if value:
+                return value
     return ""

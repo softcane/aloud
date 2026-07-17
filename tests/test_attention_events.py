@@ -359,8 +359,15 @@ def test_armed_codex_transcript_monitor_uses_exact_session_path(isolated_env, tm
     other_transcript = tmp_path / "other.jsonl"
     armed_transcript.write_text(
         '{"type":"response_item","payload":{"type":"function_call",'
+        '"internal_chat_message_metadata_passthrough":{"turn_id":"TURN-1"},'
         '"name":"request_user_input","arguments":"{\\"question\\":\\"Use the armed path?\\",'
         '\\"options\\":[{\\"label\\":\\"Yes\\",\\"description\\":\\"Only this session\\"}]}"}}\n'
+        '{"type":"response_item","payload":{"type":"function_call_output",'
+        '"internal_chat_message_metadata_passthrough":{"turn_id":"TURN-1"},'
+        '"output":"{\\"answers\\":{}}"}}\n'
+        '{"type":"response_item","payload":{"type":"message","role":"assistant",'
+        '"internal_chat_message_metadata_passthrough":{"turn_id":"TURN-1"},'
+        '"content":[{"type":"output_text","text":"Asked."}]}}\n'
     )
     other_transcript.write_text(
         '{"type":"response_item","payload":{"type":"function_call",'

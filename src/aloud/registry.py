@@ -106,6 +106,15 @@ class Registry:
         name = session_file_name(event.session_id)
         if not name or self._seen(event.session_id, event.dedupe_key):
             return None
+        existing = self._record(event.session_id)
+        if (
+            existing
+            and existing.get("turn")
+            and existing.get("turn") == event.turn_id
+            and int(existing.get("priority", 4)) <= event.priority
+        ):
+            self._mark_seen(event.session_id, event.dedupe_key)
+            return None
 
         self.paths.sessions.mkdir(parents=True, exist_ok=True)
         record = {
@@ -203,13 +212,20 @@ class Registry:
                     pass
 
     def _record_text(self, session_id: str | None, key: str) -> str:
+        record = self._record(session_id)
+        if not record:
+            return ""
+        return record.get(key, "")
+
+    def _record(self, session_id: str | None) -> dict[str, Any]:
         name = session_file_name(session_id)
         if not name:
-            return ""
+            return {}
         try:
-            return json.loads((self.paths.sessions / f"{name}.json").read_text()).get(key, "")
+            record = json.loads((self.paths.sessions / f"{name}.json").read_text())
+            return record if isinstance(record, dict) else {}
         except (OSError, json.JSONDecodeError):
-            return ""
+            return {}
 
     def _pointer_target(self, pointer: Path, *, key: str = "text") -> Target:
         try:
