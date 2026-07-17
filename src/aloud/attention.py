@@ -24,10 +24,11 @@ BLOCKED_EVENTS = {"StopFailure"}
 COMPLETION_EVENTS = {"Stop"}
 
 SECRET_PATTERNS = (
-    re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+"),
+    re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(?:Bearer|Basic)?\s*[^\s,;]+"),
+    re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}"),
     re.compile(
         r"(?i)\b("
-        r"authorization|api[_-]?key|token|password|passwd|pwd|secret|access[_-]?token"
+        r"api[_-]?key|token|password|passwd|pwd|secret|access[_-]?token"
         r")\b\s*[:=]\s*([^\s,;]+)"
     ),
     re.compile(r"(?i)(sk-[A-Za-z0-9_-]{8,})"),

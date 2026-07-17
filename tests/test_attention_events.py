@@ -189,6 +189,22 @@ def test_plan_permission_blocked_completion_and_redaction():
     assert "The feature works" in completion.speech_text
 
 
+def test_redaction_does_not_hide_plain_basic_text():
+    event = normalize_attention_event(
+        {
+            "source": "Claude",
+            "hook_event_name": "Stop",
+            "session_id": "SID-RED",
+            "cwd": "/repo/aloud",
+            "last_assistant_message": "Outcome\nThis is a basic test harness.",
+        }
+    )
+
+    assert event
+    assert "basic test harness" in event.speech_text
+    assert "[redacted]" not in event.speech_text
+
+
 def test_routine_events_and_user_interrupts_remain_silent():
     routine = normalize_attention_event(
         {
