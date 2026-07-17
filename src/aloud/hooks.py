@@ -26,7 +26,7 @@ def prompt_hook(payload: dict[str, Any], paths: AppPaths | None = None) -> dict[
     session_id = payload.get("session_id", "")
     phrase = normalize_prompt(payload.get("prompt", ""))
     if ARM_RE.match(phrase):
-        registry.arm(session_id)
+        registry.arm(session_id, payload.get("transcript_path"))
         return {
             "decision": "block",
             "reason": (

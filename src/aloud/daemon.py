@@ -4,6 +4,8 @@ import os
 import socket
 import subprocess
 import sys
+import threading
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Protocol
@@ -141,6 +143,11 @@ class Daemon:
             with suppress(OSError):
                 path.unlink()
 
+    def poll_transcripts(self) -> None:
+        for session_id in self.registry.record_armed_transcript_events():
+            if self.registry.is_armed(session_id):
+                self.speak(session_id)
+
     def _play_text(self, text: str, quiet: bool = False, priority: int = 4) -> None:
         if not self._should_play(priority):
             return
@@ -207,6 +214,7 @@ def serve(paths: AppPaths | None = None) -> None:
     sys.stderr.write("aloud daemon ready\n")
     sys.stderr.flush()
     daemon = Daemon(paths=paths)
+    threading.Thread(target=_poll_transcripts, args=(daemon,), daemon=True).start()
     while True:
         conn, _ = server.accept()
         try:
@@ -214,3 +222,10 @@ def serve(paths: AppPaths | None = None) -> None:
             daemon.handle(data)
         finally:
             conn.close()
+
+
+def _poll_transcripts(daemon: Daemon) -> None:
+    while True:
+        with suppress(Exception):
+            daemon.poll_transcripts()
+        time.sleep(1)

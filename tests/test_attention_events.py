@@ -71,7 +71,7 @@ def test_claude_ask_user_question_speaks_all_questions_options_and_recommendatio
 
     assert event
     assert event.kind == "question"
-    assert event.priority == 2
+    assert event.priority == 1
     assert "Claude aloud asks" in event.speech_text
     assert "Which migration strategy should I use for the customer data?" in event.speech_text
     assert "Should I create a backup first?" in event.speech_text
@@ -175,7 +175,8 @@ def test_plan_permission_blocked_completion_and_redaction():
     assert plan and plan.kind == "plan"
     assert "asks for plan approval" in plan.speech_text
     assert permission and permission.kind == "permission"
-    assert permission.priority == 1
+    assert plan.priority == 1
+    assert permission.priority == 2
     assert "super-secret" not in permission.speech_text
     assert "Bearer abc123" not in permission.speech_text
     assert "abc123" not in permission.speech_text
@@ -313,13 +314,62 @@ def test_daemon_priority_repeat_full_and_chunking(isolated_env):
     daemon.speak("SID-A")
     assert len(synth.calls) == before_lower_count
 
+    question = normalize_attention_event(
+        {
+            "source": "Codex",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "request_user_input",
+            "session_id": "SID-A",
+            "cwd": "/repo/a",
+            "tool_input": {"question": "Which option should I use?"},
+        },
+        Config(max_chars=30, gist_chars=20),
+    )
+    assert question
+    registry.record_attention(question)
+    daemon.speak("SID-A")
+    assert any("Which option" in call for call in synth.calls[before_lower_count:])
+
     daemon.repeat()
     repeat_calls = synth.calls[before_lower_count:]
     assert repeat_calls
-    assert "requests" in " ".join(repeat_calls)
-    assert "permission" in " ".join(repeat_calls)
+    assert "Which option" in " ".join(repeat_calls)
     daemon.full()
-    assert any("ls" in call or "Preview" in call for call in synth.calls)
+    assert "Which option" in " ".join(synth.calls)
+
+
+def test_armed_codex_transcript_monitor_uses_exact_session_path(isolated_env, tmp_path):
+    armed_transcript = tmp_path / "armed.jsonl"
+    other_transcript = tmp_path / "other.jsonl"
+    armed_transcript.write_text(
+        '{"type":"response_item","payload":{"type":"function_call",'
+        '"name":"request_user_input","arguments":"{\\"question\\":\\"Use the armed path?\\",'
+        '\\"options\\":[{\\"label\\":\\"Yes\\",\\"description\\":\\"Only this session\\"}]}"}}\n'
+    )
+    other_transcript.write_text(
+        '{"type":"response_item","payload":{"type":"function_call",'
+        '"name":"request_user_input","arguments":"{\\"question\\":\\"Wrong session?\\",'
+        '\\"options\\":[{\\"label\\":\\"No\\"}]}"}}\n'
+    )
+    registry = Registry(isolated_env, Config())
+    registry.arm("SID-ARMED", str(armed_transcript))
+
+    recorded = registry.record_armed_transcript_events()
+
+    assert recorded == ["SID-ARMED"]
+    assert "Use the armed path?" in registry.attention_for("SID-ARMED")
+    assert "Wrong session?" not in registry.attention_for("SID-ARMED")
+
+
+def test_registry_does_not_fall_back_to_global_newest_transcript(isolated_env, tmp_path):
+    transcript = tmp_path / "newest.jsonl"
+    transcript.write_text(
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"Global text"}]}}\n'
+    )
+    registry = Registry(isolated_env, Config())
+
+    assert registry.record_stop({"session_id": "SID-NO-TEXT"}) is None
+    assert registry.resolve_target().text == ""
 
 
 def test_hook_event_requires_armed_session_and_off_suppresses_later_events(isolated_env):

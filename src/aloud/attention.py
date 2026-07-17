@@ -10,9 +10,9 @@ from aloud.config import Config
 from aloud.text import signature, to_speech
 
 PRIORITY = {
-    "permission": 1,
-    "question": 2,
-    "plan": 2,
+    "question": 1,
+    "plan": 1,
+    "permission": 2,
     "blocked": 3,
     "completion": 4,
 }
@@ -52,6 +52,7 @@ class AttentionEvent:
     priority: int
     dedupe_key: str
     turn_id: str = ""
+    transcript_path: str = ""
     questions: tuple[str, ...] = ()
     options: tuple[Option, ...] = ()
     requires_response: bool = True
@@ -285,6 +286,7 @@ def _event(
         priority=PRIORITY[kind],
         dedupe_key=signature(json.dumps(dedupe_source, sort_keys=True)),
         turn_id=str(payload.get("turn_id") or payload.get("request_id") or ""),
+        transcript_path=str(payload.get("transcript_path") or ""),
         questions=questions,
         options=options,
         requires_response=requires_response,

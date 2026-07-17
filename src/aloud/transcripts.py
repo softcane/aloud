@@ -6,6 +6,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+from aloud.attention import AttentionEvent, normalize_attention_event
+from aloud.config import Config
+
 
 def newest_transcript(home: Path | None = None) -> Path | None:
     home = home or Path.home()
@@ -47,6 +50,36 @@ def last_assistant_text(transcript_path: str | os.PathLike[str] | None) -> str |
     return text
 
 
+def attention_events_from_transcript(
+    transcript_path: str | os.PathLike[str] | None,
+    session_id: str,
+    config: Config,
+) -> list[AttentionEvent]:
+    if not transcript_path:
+        return []
+    path = Path(transcript_path)
+    events = []
+    try:
+        with path.open() as lines:
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                payload = _attention_payload(obj, session_id, path)
+                if not payload:
+                    continue
+                event = normalize_attention_event(payload, config)
+                if event:
+                    events.append(event)
+    except OSError:
+        return []
+    return events
+
+
 def _assistant_text(obj: dict[str, Any]) -> str:
     if obj.get("type") == "assistant":
         if obj.get("isSidechain"):
@@ -69,4 +102,81 @@ def _assistant_text(obj: dict[str, Any]) -> str:
             ]
             return "\n".join(part for part in parts if part.strip())
 
+    return ""
+
+
+def _attention_payload(
+    obj: dict[str, Any],
+    session_id: str,
+    transcript_path: Path,
+) -> dict[str, Any] | None:
+    base = {
+        "source": "Codex",
+        "session_id": session_id,
+        "transcript_path": str(transcript_path),
+        "cwd": _first_text(obj, "cwd", "working_directory", "project"),
+        "turn_id": _first_text(obj, "turn_id", "request_id", "id"),
+    }
+    payload = obj.get("payload") if isinstance(obj.get("payload"), dict) else obj
+    name = _first_text(payload, "name", "tool_name", "toolName")
+    item_type = _first_text(payload, "type", "event", "event_name")
+    arguments = _arguments(payload)
+
+    if name == "request_user_input":
+        return {
+            **base,
+            "hook_event_name": "Transcript",
+            "tool_name": name,
+            "tool_input": arguments,
+        }
+
+    if "elicitation" in name.lower() or "elicitation" in item_type.lower():
+        return {
+            **base,
+            "hook_event_name": "Elicitation",
+            "tool_name": name or "elicitation",
+            "tool_input": arguments,
+            "message": _first_text(payload, "message", "reason", "prompt", "text"),
+        }
+
+    message = _first_text(payload, "message", "error", "reason", "text")
+    status = _first_text(payload, "status", "outcome").lower()
+    if item_type.lower() in {"error", "failure"} or status in {"failed", "error", "blocked"}:
+        return {
+            **base,
+            "hook_event_name": "StopFailure",
+            "error": message or status,
+        }
+
+    assistant_text = _assistant_text(obj)
+    if assistant_text:
+        return {
+            **base,
+            "hook_event_name": "Stop",
+            "last_assistant_message": assistant_text,
+        }
+
+    return None
+
+
+def _arguments(payload: dict[str, Any]) -> dict[str, Any]:
+    for key in ("arguments", "args", "input", "params"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                loaded = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(loaded, dict):
+                return loaded
+    return {}
+
+
+def _first_text(data: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
     return ""

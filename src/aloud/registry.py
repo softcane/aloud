@@ -13,7 +13,11 @@ from aloud.attention import AttentionEvent
 from aloud.config import Config, load_config
 from aloud.paths import AppPaths, default_paths
 from aloud.text import signature, to_speech
-from aloud.transcripts import assistant_text_from_payload, last_assistant_text, newest_transcript
+from aloud.transcripts import (
+    assistant_text_from_payload,
+    attention_events_from_transcript,
+    last_assistant_text,
+)
 
 
 @dataclass(frozen=True)
@@ -37,12 +41,13 @@ class Registry:
         self.paths = paths or default_paths()
         self.config = config or load_config(self.paths)
 
-    def arm(self, session_id: str | None) -> None:
+    def arm(self, session_id: str | None, transcript_path: str | None = None) -> None:
         name = session_file_name(session_id)
         if not name:
             return
         self.paths.armed.mkdir(parents=True, exist_ok=True)
-        (self.paths.armed / name).touch()
+        record = {"session": session_id, "transcript": transcript_path or "", "ts": time.time()}
+        (self.paths.armed / name).write_text(json.dumps(record))
 
     def disarm(self, session_id: str | None) -> None:
         name = session_file_name(session_id)
@@ -73,10 +78,6 @@ class Registry:
 
     def record_stop(self, payload: dict[str, Any]) -> str | None:
         transcript = payload.get("transcript_path")
-        if not transcript:
-            fallback = newest_transcript()
-            transcript = str(fallback) if fallback else None
-
         text = assistant_text_from_payload(payload)
         if not text and transcript:
             text = last_assistant_text(transcript) or ""
@@ -118,12 +119,25 @@ class Registry:
             "session": event.session_id,
             "source": event.source,
             "project": event.project,
+            "transcript": event.transcript_path,
         }
         (self.paths.sessions / f"{name}.json").write_text(json.dumps(record))
         self._write_pointer(self.paths.latest, event.session_id)
         self._mark_seen(event.session_id, event.dedupe_key)
         self.prune()
         return event.session_id
+
+    def record_armed_transcript_events(self) -> list[str]:
+        recorded = []
+        for session_id, transcript_path in self.armed_transcripts():
+            for event in attention_events_from_transcript(
+                transcript_path,
+                session_id,
+                self.config,
+            ):
+                if self.record_attention(event):
+                    recorded.append(session_id)
+        return recorded
 
     def note_spoken(self, session_id: str | None) -> None:
         if session_id:
@@ -148,11 +162,22 @@ class Registry:
         target = self._pointer_target(self.paths.latest)
         if target.text:
             return target
-        transcript = newest_transcript()
-        if not transcript:
-            return Target("", "")
-        text = to_speech(last_assistant_text(transcript), self.config.max_chars)
-        return Target(text, signature(text))
+        return Target("", "")
+
+    def armed_transcripts(self) -> list[tuple[str, str]]:
+        if not self.paths.armed.exists():
+            return []
+        sessions = []
+        for marker in self.paths.armed.iterdir():
+            try:
+                record = json.loads(marker.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            session_id = str(record.get("session") or marker.name)
+            transcript = str(record.get("transcript") or "")
+            if session_id and transcript:
+                sessions.append((session_id, transcript))
+        return sessions
 
     def prune(self) -> None:
         if not self.paths.sessions.exists():
