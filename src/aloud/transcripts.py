@@ -186,12 +186,12 @@ def _turn_id(obj: dict[str, Any]) -> str:
     for data in (obj, obj.get("payload")):
         if not isinstance(data, dict):
             continue
-        value = _first_text(data, "turn_id", "request_id", "id")
+        value = _first_text(data, "turn_id", "request_id")
         if value:
             return value
         metadata = data.get("internal_chat_message_metadata_passthrough")
         if isinstance(metadata, dict):
-            value = _first_text(metadata, "turn_id", "request_id", "id")
+            value = _first_text(metadata, "turn_id", "request_id")
             if value:
                 return value
     return ""
