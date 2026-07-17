@@ -155,6 +155,26 @@ Add:
 
 Update install, uninstall, and doctor behavior for every required hook. Installation must remain idempotent and preserve unrelated hooks.
 
+## Acceptance command
+
+Run this exact command from the repository root:
+
+```sh
+aloud self-test --attention --no-audio
+```
+
+Expected result: exits 0 and reports that the attention self-test exercised completion, structured question, ordinary text question, plan approval, permission, blocked event, deduplication, priority, and multiple sessions without playing audio.
+
+Baseline before implementation:
+
+```text
+exit code: 2
+usage: aloud [-h] [--version]
+             {install,uninstall,doctor,daemon,hook,full,stop,voices,self-test}
+             ...
+aloud: error: unrecognized arguments: --attention
+```
+
 ## Definition of Done
 
 Automated tests must prove:
