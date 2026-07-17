@@ -58,3 +58,14 @@ def test_self_test_no_audio_uses_registry_only(isolated_env, capsys):
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "self-test ok" in captured.out
+
+
+def test_attention_self_test_no_audio_reports_required_summary(isolated_env, capsys):
+    exit_code = main(["self-test", "--attention", "--no-audio"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert (
+        captured.out.strip() == "attention self-test ok: completion, question, plan, permission, "
+        "blocked, dedupe, priority, sessions"
+    )

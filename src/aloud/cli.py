@@ -4,14 +4,16 @@ import argparse
 import json
 import shutil
 import sys
+import time
 from contextlib import suppress
 from pathlib import Path
 
 from aloud import __version__
+from aloud.attention import normalize_attention_event
 from aloud.config import ensure_config, load_config
 from aloud.daemon import serve
-from aloud.hooks import run_prompt_hook, run_stop_hook
-from aloud.installer import install, uninstall
+from aloud.hooks import run_event_hook, run_prompt_hook, run_stop_hook
+from aloud.installer import ATTENTION_HOOK_EVENTS, install, uninstall
 from aloud.paths import default_paths
 from aloud.registry import Registry
 from aloud.socket_client import send_command
@@ -53,9 +55,14 @@ def build_parser() -> argparse.ArgumentParser:
     hook_prompt.set_defaults(func=lambda _args: run_prompt_hook())
     hook_stop = hook_sub.add_parser("stop", help="run Stop hook")
     hook_stop.set_defaults(func=lambda _args: run_stop_hook())
+    hook_event = hook_sub.add_parser("event", help="run lifecycle event hook")
+    hook_event.set_defaults(func=lambda _args: run_event_hook())
 
     full_parser = sub.add_parser("full", help="speak the full reply")
     full_parser.set_defaults(func=lambda _args: cmd_send("full", autostart=True))
+
+    repeat_parser = sub.add_parser("repeat", help="repeat the most recent attention alert")
+    repeat_parser.set_defaults(func=lambda _args: cmd_send("repeat", autostart=True))
 
     stop_parser = sub.add_parser("stop", help="stop playback")
     stop_parser.set_defaults(func=lambda _args: cmd_send("stop"))
@@ -70,6 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     self_test = sub.add_parser("self-test", help="run a local Aloud smoke test")
     self_test.add_argument("--no-audio", action="store_true", help="skip Kokoro and afplay")
+    self_test.add_argument("--attention", action="store_true", help="exercise attention alerts")
     self_test.set_defaults(func=cmd_self_test)
 
     return parser
@@ -156,6 +164,8 @@ def cmd_voices(args: argparse.Namespace) -> int:
 
 
 def cmd_self_test(args: argparse.Namespace) -> int:
+    if args.attention:
+        return cmd_attention_self_test(args)
     if args.no_audio:
         paths = default_paths()
         paths.ensure_runtime_dirs()
@@ -186,6 +196,169 @@ def cmd_self_test(args: argparse.Namespace) -> int:
     return cmd_send("full", autostart=True)
 
 
+def cmd_attention_self_test(args: argparse.Namespace) -> int:
+    if not args.no_audio:
+        return cmd_send("full", autostart=True)
+
+    from aloud.daemon import Daemon
+
+    class FakeSynth:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def synthesize(self, text: str, output_path: Path) -> bool:
+            self.calls.append(text)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"fake wav")
+            return True
+
+    class FakePlayer:
+        def __init__(self):
+            self.active = False
+            self.stops = 0
+
+        def play(self, _path: Path) -> None:
+            self.active = True
+
+        def stop(self) -> None:
+            self.stops += 1
+            self.active = False
+
+        def is_playing(self) -> bool:
+            return self.active
+
+    paths = default_paths()
+    paths.ensure_runtime_dirs()
+    ensure_config(paths)
+    registry = Registry(paths)
+    synth = FakeSynth()
+    player = FakePlayer()
+    daemon = Daemon(paths=paths, registry=registry, synthesizer=synth, player=player)
+    run_id = time.time_ns()
+    sid_a = f"attention-self-test-a-{run_id}"
+    sid_b = f"attention-self-test-b-{run_id}"
+    for sid in (sid_a, sid_b):
+        registry.arm(sid)
+
+    def record_and_speak(payload: dict[str, object]) -> bool:
+        event = normalize_attention_event(payload, registry.config)
+        if not event:
+            return False
+        session_id = registry.record_attention(event)
+        if session_id:
+            daemon.speak(session_id)
+            return True
+        return False
+
+    try:
+        completion = record_and_speak(
+            {
+                "source": "Codex",
+                "hook_event_name": "Stop",
+                "session_id": sid_a,
+                "cwd": "/tmp/aloud",
+                "last_assistant_message": "Outcome\nCompletion worked.\n- Important result.",
+            }
+        )
+        question = record_and_speak(
+            {
+                "source": "Codex",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "request_user_input",
+                "session_id": sid_a,
+                "cwd": "/tmp/aloud",
+                "tool_input": {
+                    "questions": [
+                        {
+                            "question": "Which path should I use?",
+                            "options": [
+                                {"label": "Use local", "description": "Fast path"},
+                                {
+                                    "label": "Use remote (Recommended)",
+                                    "description": "Safer path",
+                                },
+                            ],
+                        }
+                    ],
+                    "allow_free_form": True,
+                },
+            }
+        )
+        plan = record_and_speak(
+            {
+                "source": "Claude",
+                "hook_event_name": "PreToolUse",
+                "tool_name": "ExitPlanMode",
+                "session_id": sid_a,
+                "cwd": "/tmp/aloud",
+                "tool_input": {"plan": "Implement the checked path."},
+            }
+        )
+        permission = record_and_speak(
+            {
+                "source": "Claude",
+                "hook_event_name": "PermissionRequest",
+                "tool_name": "Bash",
+                "session_id": sid_a,
+                "cwd": "/tmp/aloud",
+                "reason": "Needs permission.",
+                "command": "deploy --token=secret-value",
+            }
+        )
+        player.active = False
+        daemon.current_priority = None
+        blocked = record_and_speak(
+            {
+                "source": "Codex",
+                "hook_event_name": "StopFailure",
+                "session_id": sid_b,
+                "cwd": "/tmp/aloud-other",
+                "error": "The agent is blocked on missing input.",
+            }
+        )
+        duplicate_payload = {
+            "source": "Codex",
+            "hook_event_name": "StopFailure",
+            "session_id": sid_b,
+            "cwd": "/tmp/aloud-other",
+            "error": "The agent is blocked on missing input.",
+        }
+        duplicate_first = normalize_attention_event(duplicate_payload, registry.config)
+        dedupe = bool(duplicate_first and registry.record_attention(duplicate_first) is None)
+
+        before_priority = synth.calls[-1]
+        low_event = normalize_attention_event(
+            {
+                "source": "Codex",
+                "hook_event_name": "Stop",
+                "session_id": sid_b,
+                "cwd": "/tmp/aloud-other",
+                "last_assistant_message": "Outcome\nLower priority completion.",
+            },
+            registry.config,
+        )
+        if low_event:
+            low_sid = registry.record_attention(low_event)
+            if low_sid:
+                daemon.speak(low_sid)
+        priority = synth.calls[-1] == before_priority
+
+        sessions = registry.text_for(sid_a) and registry.text_for(sid_b)
+        no_secret = all("secret-value" not in call for call in synth.calls)
+        checks = (completion, question, plan, permission, blocked, dedupe, priority, sessions)
+        if all((*checks, no_secret)):
+            print(
+                "attention self-test ok: completion, question, plan, permission, "
+                "blocked, dedupe, priority, sessions"
+            )
+            return 0
+        print("attention self-test failed", file=sys.stderr)
+        return 1
+    finally:
+        registry.disarm(sid_a)
+        registry.disarm(sid_b)
+
+
 def claude_commands_installed() -> bool:
     root = Path.home() / ".claude" / "commands"
     return (root / "aloud-on.md").exists() and (root / "aloud-off.md").exists()
@@ -211,12 +384,24 @@ def hooks_file_contains_aloud(path: Path) -> bool:
         data = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return False
+    hooks = data.get("hooks", {})
+    prompt_commands = []
+    for block in hooks.get("UserPromptSubmit", []):
+        prompt_commands.extend(hook.get("command", "") for hook in block.get("hooks", []))
+    if not any("aloud hook prompt" in command for command in prompt_commands):
+        return False
+    for event in ATTENTION_HOOK_EVENTS:
+        event_commands = []
+        for block in hooks.get(event, []):
+            event_commands.extend(hook.get("command", "") for hook in block.get("hooks", []))
+        if not any("aloud hook event" in command for command in event_commands):
+            return False
     commands = []
-    for blocks in data.get("hooks", {}).values():
+    for blocks in hooks.values():
         for block in blocks:
             commands.extend(hook.get("command", "") for hook in block.get("hooks", []))
     joined = "\n".join(commands)
-    return "aloud hook prompt" in joined and "aloud hook stop" in joined
+    return "aloud hook prompt" in joined and "aloud hook event" in joined
 
 
 if __name__ == "__main__":

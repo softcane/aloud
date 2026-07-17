@@ -21,11 +21,21 @@ from aloud.paths import AppPaths, default_paths
 Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
 ALOUD_NEEDLES = (
+    "aloud hook event",
     "aloud hook prompt",
     "aloud hook stop",
     "aloud_on_prompt.py",
     "aloud_on_stop.py",
     "aloud forget",
+)
+
+ATTENTION_HOOK_EVENTS = (
+    "PreToolUse",
+    "PermissionRequest",
+    "Elicitation",
+    "Notification",
+    "StopFailure",
+    "Stop",
 )
 
 
@@ -167,9 +177,10 @@ def hammerspoon_block(command_prefix: list[str]) -> str:
     escaped = command.replace("\\", "\\\\").replace('"', '\\"')
     return (
         "\n-- BEGIN Aloud hotkeys\n"
-        "-- Cmd+Ctrl+H = hear the full reply, Cmd+Ctrl+. = stop\n"
+        "-- Cmd+Ctrl+H = hear the full reply, Cmd+Ctrl+J = repeat, Cmd+Ctrl+. = stop\n"
         f'local aloud = "{escaped}"\n'
         'hs.hotkey.bind({"cmd","ctrl"}, "H", function() hs.execute(aloud .. " full") end)\n'
+        'hs.hotkey.bind({"cmd","ctrl"}, "J", function() hs.execute(aloud .. " repeat") end)\n'
         'hs.hotkey.bind({"cmd","ctrl"}, ".", function() hs.execute(aloud .. " stop") end)\n'
         'hs.alert.show("Aloud hotkeys loaded")\n'
         "-- END Aloud hotkeys\n"
@@ -225,14 +236,15 @@ def install_claude_hooks(command_prefix: list[str], result: InstallResult) -> No
     if settings.exists():
         result.backups.append(backup_file(settings))
     hooks = data.setdefault("hooks", {})
-    hooks["Stop"] = replace_hook_blocks(
-        hooks.get("Stop", []),
-        claude_entry([*command_prefix, "hook", "stop"], timeout=5, is_async=False),
-    )
     hooks["UserPromptSubmit"] = replace_hook_blocks(
         hooks.get("UserPromptSubmit", []),
         claude_entry([*command_prefix, "hook", "prompt"], timeout=5, is_async=False),
     )
+    for event in ATTENTION_HOOK_EVENTS:
+        hooks[event] = replace_hook_blocks(
+            hooks.get(event, []),
+            claude_entry([*command_prefix, "hook", "event"], timeout=5, is_async=False),
+        )
     write_json_atomic(settings, data)
     result.add("installed Claude Code hooks")
 
@@ -247,14 +259,15 @@ def install_codex_hooks(command_prefix: list[str], result: InstallResult) -> Non
     if hooks_path.exists():
         result.backups.append(backup_file(hooks_path))
     hooks = data.setdefault("hooks", {})
-    hooks["Stop"] = replace_hook_blocks(
-        hooks.get("Stop", []),
-        codex_entry([*command_prefix, "hook", "stop"], timeout=5),
-    )
     hooks["UserPromptSubmit"] = replace_hook_blocks(
         hooks.get("UserPromptSubmit", []),
         codex_entry([*command_prefix, "hook", "prompt"], timeout=5),
     )
+    for event in ATTENTION_HOOK_EVENTS:
+        hooks[event] = replace_hook_blocks(
+            hooks.get(event, []),
+            codex_entry([*command_prefix, "hook", "event"], timeout=5),
+        )
     write_json_atomic(hooks_path, data)
     result.add("installed Codex hooks")
 
@@ -265,7 +278,7 @@ def remove_claude_hooks(result: InstallResult) -> None:
         return
     data = load_json_file(settings)
     hooks = data.get("hooks", {})
-    for event in ("Stop", "UserPromptSubmit"):
+    for event in (*ATTENTION_HOOK_EVENTS, "UserPromptSubmit"):
         hooks[event] = strip_aloud_blocks(hooks.get(event, []))
     backup_file(settings)
     write_json_atomic(settings, data)
@@ -279,7 +292,7 @@ def remove_codex_hooks(result: InstallResult) -> None:
         return
     data = load_json_file(hooks_path)
     hooks = data.get("hooks", {})
-    for event in ("Stop", "UserPromptSubmit"):
+    for event in (*ATTENTION_HOOK_EVENTS, "UserPromptSubmit"):
         hooks[event] = strip_aloud_blocks(hooks.get(event, []))
     backup_file(hooks_path)
     write_json_atomic(hooks_path, data)

@@ -11,7 +11,7 @@ from typing import Protocol
 from aloud.config import Config, load_config
 from aloud.paths import AppPaths, default_paths
 from aloud.registry import Registry
-from aloud.text import signature, to_gist
+from aloud.text import signature, speech_chunks, to_gist
 
 
 class Synthesizer(Protocol):
@@ -55,8 +55,11 @@ class KokoroSynthesizer:
 
 
 class AfplayPlayer:
+    def __init__(self) -> None:
+        self._process: subprocess.Popen[bytes] | None = None
+
     def play(self, path: os.PathLike[str] | str) -> None:
-        subprocess.Popen(["afplay", os.fspath(path)])
+        self._process = subprocess.Popen(["afplay", os.fspath(path)])
 
     def stop(self) -> None:
         subprocess.run(
@@ -65,6 +68,15 @@ class AfplayPlayer:
             stderr=subprocess.DEVNULL,
             check=False,
         )
+        self._process = None
+
+    def wait(self) -> None:
+        if self._process is not None:
+            self._process.wait()
+            self._process = None
+
+    def is_playing(self) -> bool:
+        return self._process is not None and self._process.poll() is None
 
 
 class Daemon:
@@ -81,9 +93,10 @@ class Daemon:
         self.registry = registry or Registry(self.paths, self.config)
         self.synthesizer = synthesizer or KokoroSynthesizer(self.config)
         self.player = player or AfplayPlayer()
+        self.current_priority: int | None = None
 
     def handle(self, command: str) -> None:
-        parts = command.strip().split()
+        parts = command.strip().split(maxsplit=1)
         if not parts:
             return
         verb = parts[0]
@@ -92,32 +105,54 @@ class Daemon:
             self.speak(arg)
         elif verb in ("full", "play"):
             self.full()
+        elif verb == "repeat":
+            self.repeat()
         elif verb == "stop":
             self.player.stop()
+            self.current_priority = None
         elif verb == "forget":
             self.forget()
 
     def full(self) -> None:
-        self._play_text(self.registry.spoken_target().text)
+        self._play_text(self.registry.spoken_target().text, priority=0)
+
+    def repeat(self) -> None:
+        self._play_text(self.registry.spoken_attention_target().text, priority=0)
 
     def speak(self, session_id: str) -> None:
         full_text = self.registry.text_for(session_id)
         if not full_text:
             return
+        priority = self.registry.priority_for(session_id)
+        attention_text = self.registry.attention_for(session_id)
+        if not self._should_play(priority):
+            return
         self.registry.note_spoken(session_id)
-        self._play_text(to_gist(full_text, self.config.gist_chars), quiet=True)
+        self._play_text(
+            attention_text or to_gist(full_text, self.config.gist_chars),
+            quiet=True,
+            priority=priority,
+        )
 
     def forget(self) -> None:
         self.player.stop()
+        self.current_priority = None
         for path in (self.paths.wav, self.paths.signature):
             with suppress(OSError):
                 path.unlink()
 
-    def _play_text(self, text: str, quiet: bool = False) -> None:
+    def _play_text(self, text: str, quiet: bool = False, priority: int = 4) -> None:
+        if not self._should_play(priority):
+            return
         self.player.stop()
+        self.current_priority = priority
         if not text:
             if not quiet:
                 notify("No reply to read yet.")
+            return
+        chunks = speech_chunks(text, self.config.max_chars)
+        if len(chunks) > 1:
+            self._play_chunks(chunks)
             return
         sig = signature(text)
         cached = self.paths.wav.exists() and self._read_signature() == sig
@@ -127,6 +162,23 @@ class Daemon:
             self.paths.signature.parent.mkdir(parents=True, exist_ok=True)
             self.paths.signature.write_text(sig)
         self.player.play(self.paths.wav)
+
+    def _play_chunks(self, chunks: list[str]) -> None:
+        for index, chunk in enumerate(chunks, 1):
+            out = self.paths.cache_home / f"last-{index}.wav"
+            if not self.synthesizer.synthesize(chunk, out):
+                return
+            self.player.play(out)
+            wait = getattr(self.player, "wait", None)
+            if callable(wait):
+                wait()
+
+    def _should_play(self, priority: int) -> bool:
+        is_playing = getattr(self.player, "is_playing", None)
+        active = bool(is_playing()) if callable(is_playing) else False
+        if not active or self.current_priority is None:
+            return True
+        return priority <= self.current_priority
 
     def _read_signature(self) -> str | None:
         try:

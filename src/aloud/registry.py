@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from aloud.attention import AttentionEvent
 from aloud.config import Config, load_config
 from aloud.paths import AppPaths, default_paths
 from aloud.text import signature, to_speech
@@ -55,13 +56,20 @@ class Registry:
         return bool(name) and (self.paths.armed / name).exists()
 
     def text_for(self, session_id: str | None) -> str:
+        return self._record_text(session_id, "text")
+
+    def attention_for(self, session_id: str | None) -> str:
+        return self._record_text(session_id, "attention")
+
+    def priority_for(self, session_id: str | None) -> int:
         name = session_file_name(session_id)
         if not name:
-            return ""
+            return 4
         try:
-            return json.loads((self.paths.sessions / f"{name}.json").read_text()).get("text", "")
+            record = json.loads((self.paths.sessions / f"{name}.json").read_text())
+            return int(record.get("priority", 4))
         except (OSError, json.JSONDecodeError):
-            return ""
+            return 4
 
     def record_stop(self, payload: dict[str, Any]) -> str | None:
         transcript = payload.get("transcript_path")
@@ -72,7 +80,7 @@ class Registry:
         text = assistant_text_from_payload(payload)
         if not text and transcript:
             text = last_assistant_text(transcript) or ""
-        text = to_speech(text, self.config.max_chars)
+        text = to_speech(text, 0)
         if not text:
             return None
 
@@ -93,6 +101,30 @@ class Registry:
         self.prune()
         return sid
 
+    def record_attention(self, event: AttentionEvent) -> str | None:
+        name = session_file_name(event.session_id)
+        if not name or self._seen(event.session_id, event.dedupe_key):
+            return None
+
+        self.paths.sessions.mkdir(parents=True, exist_ok=True)
+        record = {
+            "text": event.full_text,
+            "attention": event.speech_text,
+            "priority": event.priority,
+            "kind": event.kind,
+            "dedupe": event.dedupe_key,
+            "turn": event.turn_id,
+            "ts": time.time(),
+            "session": event.session_id,
+            "source": event.source,
+            "project": event.project,
+        }
+        (self.paths.sessions / f"{name}.json").write_text(json.dumps(record))
+        self._write_pointer(self.paths.latest, event.session_id)
+        self._mark_seen(event.session_id, event.dedupe_key)
+        self.prune()
+        return event.session_id
+
     def note_spoken(self, session_id: str | None) -> None:
         if session_id:
             self._write_pointer(self.paths.spoken, session_id)
@@ -102,6 +134,15 @@ class Registry:
         if target.text:
             return target
         return self.resolve_target()
+
+    def spoken_attention_target(self) -> Target:
+        target = self._pointer_target(self.paths.spoken, key="attention")
+        if target.text:
+            return target
+        target = self._pointer_target(self.paths.latest, key="attention")
+        if target.text:
+            return target
+        return self.spoken_target()
 
     def resolve_target(self) -> Target:
         target = self._pointer_target(self.paths.latest)
@@ -136,15 +177,38 @@ class Registry:
                 except OSError:
                     pass
 
-    def _pointer_target(self, pointer: Path) -> Target:
+    def _record_text(self, session_id: str | None, key: str) -> str:
+        name = session_file_name(session_id)
+        if not name:
+            return ""
+        try:
+            return json.loads((self.paths.sessions / f"{name}.json").read_text()).get(key, "")
+        except (OSError, json.JSONDecodeError):
+            return ""
+
+    def _pointer_target(self, pointer: Path, *, key: str = "text") -> Target:
         try:
             session_id = pointer.read_text().strip()
         except OSError:
             return Target("", "")
-        text = self.text_for(session_id)
+        text = self._record_text(session_id, key)
+        if not text and key != "text":
+            text = self.text_for(session_id)
         if not text:
             return Target("", "")
         return Target(text, signature(text))
+
+    def _seen(self, session_id: str, event_signature: str) -> bool:
+        name = session_file_name(session_id)
+        return bool(name) and (self.paths.sessions / "seen" / name / event_signature).exists()
+
+    def _mark_seen(self, session_id: str, event_signature: str) -> None:
+        name = session_file_name(session_id)
+        if not name:
+            return
+        directory = self.paths.sessions / "seen" / name
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / event_signature).touch()
 
     @staticmethod
     def _write_pointer(pointer: Path, session_id: str) -> None:

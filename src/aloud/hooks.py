@@ -6,6 +6,7 @@ import sys
 from contextlib import suppress
 from typing import Any
 
+from aloud.attention import normalize_attention_event
 from aloud.paths import AppPaths, default_paths
 from aloud.registry import Registry
 from aloud.socket_client import send_command
@@ -50,6 +51,18 @@ def stop_hook(payload: dict[str, Any], paths: AppPaths | None = None) -> str | N
     return session_id
 
 
+def event_hook(payload: dict[str, Any], paths: AppPaths | None = None) -> str | None:
+    paths = paths or default_paths()
+    registry = Registry(paths)
+    event = normalize_attention_event(payload, registry.config)
+    if not event or not registry.is_armed(event.session_id):
+        return None
+    session_id = registry.record_attention(event)
+    if session_id:
+        send_command(f"speak {session_id}", paths)
+    return session_id
+
+
 def run_prompt_hook() -> int:
     try:
         decision = prompt_hook(json.load(sys.stdin))
@@ -63,4 +76,10 @@ def run_prompt_hook() -> int:
 def run_stop_hook() -> int:
     with suppress(Exception):
         stop_hook(json.load(sys.stdin))
+    return 0
+
+
+def run_event_hook() -> int:
+    with suppress(Exception):
+        event_hook(json.load(sys.stdin))
     return 0
