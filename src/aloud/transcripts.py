@@ -111,7 +111,7 @@ def _attention_payload(
     transcript_path: Path,
 ) -> dict[str, Any] | None:
     base = {
-        "source": "Codex",
+        "source": _source_for_transcript(transcript_path),
         "session_id": session_id,
         "transcript_path": str(transcript_path),
         "cwd": _first_text(obj, "cwd", "working_directory", "project"),
@@ -195,3 +195,12 @@ def _turn_id(obj: dict[str, Any]) -> str:
             if value:
                 return value
     return ""
+
+
+def _source_for_transcript(transcript_path: Path) -> str:
+    path = str(transcript_path)
+    if ".claude" in path:
+        return "Claude"
+    if ".codex" in path:
+        return "Codex"
+    return "Agent"

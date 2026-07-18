@@ -7,6 +7,7 @@ from aloud.config import Config
 from aloud.daemon import Daemon
 from aloud.hooks import event_hook, prompt_hook
 from aloud.registry import Registry
+from aloud.transcripts import attention_events_from_transcript
 
 
 class FakeSynth:
@@ -401,6 +402,24 @@ def test_armed_codex_transcript_monitor_uses_exact_session_path(isolated_env, tm
     assert recorded == ["SID-ARMED"]
     assert "Use the armed path?" in registry.attention_for("SID-ARMED")
     assert "Wrong session?" not in registry.attention_for("SID-ARMED")
+
+
+def test_claude_transcript_attention_events_keep_claude_source(tmp_path):
+    transcript = tmp_path / ".claude" / "projects" / "demo" / "claude.jsonl"
+    transcript.parent.mkdir(parents=True)
+    transcript.write_text(
+        '{"type":"assistant","message":{"content":[{"type":"text",'
+        '"text":"I found two files. Which one should I inspect first?"}]}}\n'
+    )
+
+    events = attention_events_from_transcript(transcript, "SID-CLAUDE", Config())
+
+    assert len(events) == 1
+    assert events[0].kind == "question"
+    assert events[0].source == "Claude"
+    assert events[0].session_id == "SID-CLAUDE"
+    assert "Claude" in events[0].speech_text
+    assert "Codex" not in events[0].speech_text
 
 
 def test_registry_does_not_fall_back_to_global_newest_transcript(isolated_env, tmp_path):
