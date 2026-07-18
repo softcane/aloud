@@ -54,15 +54,19 @@ def attention_events_from_transcript(
     transcript_path: str | os.PathLike[str] | None,
     session_id: str,
     config: Config,
+    *,
+    start_offset: int = 0,
 ) -> list[AttentionEvent]:
     if not transcript_path:
         return []
     path = Path(transcript_path)
     events = []
     try:
-        with path.open() as lines:
-            for line in lines:
-                line = line.strip()
+        with path.open("rb") as lines:
+            if start_offset > 0:
+                lines.seek(start_offset)
+            for raw_line in lines:
+                line = raw_line.decode("utf-8", "ignore").strip()
                 if not line:
                     continue
                 try:

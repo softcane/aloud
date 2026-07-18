@@ -129,6 +129,7 @@ def test_plain_text_question_without_structured_tool_is_detected():
     assert event
     assert event.kind == "question"
     assert "Which one should I take?" in event.speech_text
+    assert "I found two valid paths" not in event.speech_text
 
 
 def test_plan_permission_blocked_completion_and_redaction():
@@ -188,6 +189,52 @@ def test_plan_permission_blocked_completion_and_redaction():
     assert "The feature works" in completion.full_text
     assert "Tests cover hooks" in completion.full_text
     assert "The feature works" in completion.speech_text
+
+
+def test_permission_json_preview_redacts_secret_values():
+    event = normalize_attention_event(
+        {
+            "source": "Codex",
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Deploy",
+            "session_id": "SID-SECRET",
+            "cwd": "/repo/aloud",
+            "tool_input": {
+                "api_key": "secret-value",
+                "nested": {"token": "tok123456789"},
+                "safe": "visible-value",
+            },
+        }
+    )
+
+    assert event
+    assert "secret-value" not in event.speech_text
+    assert "tok123456789" not in event.speech_text
+    assert "visible-value" in event.speech_text
+    assert event.speech_text.count("[redacted]") == 2
+
+
+def test_permission_command_flags_redact_space_separated_secret_values():
+    event = normalize_attention_event(
+        {
+            "source": "Codex",
+            "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash",
+            "session_id": "SID-SECRET",
+            "cwd": "/repo/aloud",
+            "command": (
+                "deploy --token secret-value --password hunter2 "
+                "--api-key api-secret-123 --safe visible"
+            ),
+        }
+    )
+
+    assert event
+    assert "secret-value" not in event.speech_text
+    assert "hunter2" not in event.speech_text
+    assert "api-secret-123" not in event.speech_text
+    assert "--safe visible" in event.speech_text
+    assert event.speech_text.count("[redacted]") == 3
 
 
 def test_redaction_does_not_hide_plain_basic_text():
@@ -377,6 +424,11 @@ def test_daemon_priority_repeat_full_and_chunking(isolated_env):
 def test_armed_codex_transcript_monitor_uses_exact_session_path(isolated_env, tmp_path):
     armed_transcript = tmp_path / "armed.jsonl"
     other_transcript = tmp_path / "other.jsonl"
+    armed_transcript.touch()
+    other_transcript.touch()
+    registry = Registry(isolated_env, Config())
+    registry.arm("SID-ARMED", str(armed_transcript))
+
     armed_transcript.write_text(
         '{"type":"response_item","payload":{"type":"function_call",'
         '"internal_chat_message_metadata_passthrough":{"turn_id":"TURN-1"},'
@@ -394,14 +446,36 @@ def test_armed_codex_transcript_monitor_uses_exact_session_path(isolated_env, tm
         '"name":"request_user_input","arguments":"{\\"question\\":\\"Wrong session?\\",'
         '\\"options\\":[{\\"label\\":\\"No\\"}]}"}}\n'
     )
-    registry = Registry(isolated_env, Config())
-    registry.arm("SID-ARMED", str(armed_transcript))
 
     recorded = registry.record_armed_transcript_events()
 
     assert recorded == ["SID-ARMED"]
     assert "Use the armed path?" in registry.attention_for("SID-ARMED")
     assert "Wrong session?" not in registry.attention_for("SID-ARMED")
+
+
+def test_armed_transcript_monitor_skips_events_before_arm(isolated_env, tmp_path):
+    transcript = tmp_path / "codex.jsonl"
+    transcript.write_text(
+        '{"type":"response_item","payload":{"type":"message","role":"assistant",'
+        '"content":[{"type":"output_text","text":"Old reply before aloud on."}]}}\n'
+    )
+    registry = Registry(isolated_env, Config())
+
+    registry.arm("SID-ARMED", str(transcript))
+
+    assert registry.record_armed_transcript_events() == []
+    assert registry.text_for("SID-ARMED") == ""
+
+    with transcript.open("a") as handle:
+        handle.write(
+            '{"type":"response_item","payload":{"type":"message","role":"assistant",'
+            '"content":[{"type":"output_text","text":"New reply after aloud on."}]}}\n'
+        )
+
+    assert registry.record_armed_transcript_events() == ["SID-ARMED"]
+    assert registry.text_for("SID-ARMED") == "New reply after aloud on."
+    assert "Old reply" not in registry.text_for("SID-ARMED")
 
 
 def test_claude_transcript_attention_events_keep_claude_source(tmp_path):

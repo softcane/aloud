@@ -22,7 +22,25 @@ PLAN_TOOLS = {"ExitPlanMode"}
 PERMISSION_EVENTS = {"PermissionRequest", "Elicitation", "elicitation"}
 BLOCKED_EVENTS = {"StopFailure"}
 COMPLETION_EVENTS = {"Stop"}
+SENSITIVE_KEYS = {
+    "apikey",
+    "authorization",
+    "password",
+    "passwd",
+    "pwd",
+    "secret",
+    "token",
+    "accesstoken",
+}
 
+QUOTED_SECRET_RE = re.compile(
+    r"(?i)([\"']?\b(?:api[_-]?key|token|password|passwd|pwd|secret|access[_-]?token)"
+    r"\b[\"']?\s*[:=]\s*[\"']?)([^\"'\s,;}]+)([\"']?)"
+)
+COMMAND_SECRET_RE = re.compile(
+    r"(?i)(--?(?:api[_-]?key|token|password|passwd|pwd|secret|access[_-]?token)"
+    r"\b(?:=|\s+))([^\s,;}]+)"
+)
 SECRET_PATTERNS = (
     re.compile(r"(?i)\b(authorization)\b\s*[:=]\s*(?:Bearer|Basic)?\s*[^\s,;]+"),
     re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}"),
@@ -100,7 +118,8 @@ def normalize_attention_event(
 
 
 def redacted(text: str) -> str:
-    cleaned = text
+    cleaned = QUOTED_SECRET_RE.sub(r"\1[redacted]\3", text)
+    cleaned = COMMAND_SECRET_RE.sub(r"\1[redacted]", cleaned)
     for pattern in SECRET_PATTERNS:
         cleaned = pattern.sub(_redact_match, cleaned)
     return cleaned
@@ -369,6 +388,10 @@ def _plain_text_question(text: str) -> str:
     if not candidates:
         return ""
     question = candidates[-1].strip()
+    for sentence in reversed(re.split(r"(?<=[.!])\s+", question)):
+        if sentence.endswith("?"):
+            question = sentence.strip()
+            break
     if len(question.split()) < 3:
         return ""
     return question
@@ -476,9 +499,28 @@ def _json_preview(data: dict[str, Any]) -> str:
     if not data:
         return ""
     try:
-        return json.dumps(data, sort_keys=True)
+        return json.dumps(_redacted_json_value(data), sort_keys=True)
     except TypeError:
         return ""
+
+
+def _redacted_json_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted_items = {}
+        for key, nested in value.items():
+            if _is_sensitive_key(str(key)):
+                redacted_items[key] = "[redacted]"
+            else:
+                redacted_items[key] = _redacted_json_value(nested)
+        return redacted_items
+    if isinstance(value, list):
+        return [_redacted_json_value(item) for item in value]
+    return value
+
+
+def _is_sensitive_key(key: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9]", "", key.lower())
+    return normalized in SENSITIVE_KEYS
 
 
 def _option_text(option: Option) -> str:

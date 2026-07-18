@@ -46,7 +46,12 @@ class Registry:
         if not name:
             return
         self.paths.armed.mkdir(parents=True, exist_ok=True)
-        record = {"session": session_id, "transcript": transcript_path or "", "ts": time.time()}
+        record = {
+            "session": session_id,
+            "transcript": transcript_path or "",
+            "offset": _transcript_offset(transcript_path),
+            "ts": time.time(),
+        }
         (self.paths.armed / name).write_text(json.dumps(record))
 
     def disarm(self, session_id: str | None) -> None:
@@ -138,11 +143,12 @@ class Registry:
 
     def record_armed_transcript_events(self) -> list[str]:
         recorded = []
-        for session_id, transcript_path in self.armed_transcripts():
+        for session_id, transcript_path, offset in self.armed_transcripts():
             for event in attention_events_from_transcript(
                 transcript_path,
                 session_id,
                 self.config,
+                start_offset=offset,
             ):
                 if self.record_attention(event):
                     recorded.append(session_id)
@@ -173,7 +179,7 @@ class Registry:
             return target
         return Target("", "")
 
-    def armed_transcripts(self) -> list[tuple[str, str]]:
+    def armed_transcripts(self) -> list[tuple[str, str, int]]:
         if not self.paths.armed.exists():
             return []
         sessions = []
@@ -185,7 +191,7 @@ class Registry:
             session_id = str(record.get("session") or marker.name)
             transcript = str(record.get("transcript") or "")
             if session_id and transcript:
-                sessions.append((session_id, transcript))
+                sessions.append((session_id, transcript, int(record.get("offset") or 0)))
         return sessions
 
     def prune(self) -> None:
@@ -268,3 +274,12 @@ def session_id_for(
     if not transcript_path:
         return None
     return Path(transcript_path).stem
+
+
+def _transcript_offset(transcript_path: str | None) -> int:
+    if not transcript_path:
+        return 0
+    try:
+        return Path(transcript_path).stat().st_size
+    except OSError:
+        return 0
