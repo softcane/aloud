@@ -132,6 +132,22 @@ def test_plain_text_question_without_structured_tool_is_detected():
     assert "I found two valid paths" not in event.speech_text
 
 
+def test_completion_without_project_does_not_speak_session_id():
+    session_id = "019f73f8-a63f-75d2-b541-c097e4d4668c"
+    event = normalize_attention_event(
+        {
+            "source": "Codex",
+            "hook_event_name": "Stop",
+            "session_id": session_id,
+            "last_assistant_message": "Work finished.",
+        }
+    )
+
+    assert event
+    assert event.speech_text == "Codex completed. Work finished."
+    assert session_id not in event.speech_text
+
+
 def test_plan_permission_blocked_completion_and_redaction():
     plan = normalize_attention_event(
         {

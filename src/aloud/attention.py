@@ -440,11 +440,11 @@ def _project(payload: dict[str, Any]) -> str:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
             return value.rstrip("/").rsplit("/", 1)[-1]
-    return _session_id(payload) or "this session"
+    return ""
 
 
 def _identity(source: str, project: str) -> str:
-    return f"{source} {project}"
+    return " ".join(part for part in (source, project) if part)
 
 
 def _event_name(payload: dict[str, Any]) -> str:
