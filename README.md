@@ -10,6 +10,11 @@ can speak.
 Speech generation runs on your Mac. Aloud sends no reply text to a hosted
 text-to-speech service.
 
+> **Agent says:** “Which database should I use, PostgreSQL or SQLite?”
+>
+> **Aloud speaks:** “Codex aloud asks: Which database should I use? Option 1:
+> PostgreSQL. Option 2: SQLite.”
+
 ## Why use Aloud
 
 - Leave the terminal in the background while an agent works.
@@ -88,7 +93,7 @@ Claude Code or Codex
 
 The `UserPromptSubmit` hook catches `aloud on` before the coding agent receives
 it. Aloud writes a small marker containing the session ID, transcript path, and
-current transcript position. Other sessions remain quiet.
+current transcript position. Unarmed sessions remain quiet.
 
 `aloud off` removes that marker and stops playback.
 
