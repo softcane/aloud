@@ -1,19 +1,24 @@
 # Aloud
 
-Aloud reads Claude Code and Codex replies aloud on macOS.
+Hear Claude Code and Codex replies and alerts on macOS.
 
-Turn it on with `aloud on` in any Claude Code or Codex session. Aloud speaks a short summary after each assistant reply. Use `Cmd + Ctrl + H` for the full reply, or `Cmd + Ctrl + .` to stop playback.
+Aloud runs as a local helper. Turn it on in a session, and it speaks when the
+agent needs you or finishes a reply. Speech uses Kokoro locally. Aloud does not
+send replies to a hosted text-to-speech service.
 
-Aloud uses [Kokoro](https://github.com/hexgrad/kokoro) for local text-to-speech. The Python package installs Kokoro. Kokoro downloads its model files the first time speech generation starts, then reuses the local cache. Aloud does not send agent replies to an external TTS service.
+## Speaks When
 
-## Requirements
+- Claude Code or Codex asks a question or shows choices.
+- The agent asks for plan approval, permission, or elicitation.
+- The agent becomes blocked or fails.
+- The agent completes a reply.
 
-- macOS.
-- Python 3.11 or 3.12.
-- [Homebrew](https://brew.sh).
-- Claude Code, Codex CLI, or both.
+Aloud keeps sessions separate, redacts common secret values, and keeps routine
+tool calls silent.
 
 ## Install
+
+Requirements: macOS, Python 3.11 or 3.12, Homebrew, Claude Code or Codex.
 
 ```bash
 brew install python@3.11 pipx
@@ -23,103 +28,71 @@ aloud install
 aloud doctor
 ```
 
-Restart Claude Code or Codex after install. In Codex, open `/hooks` and trust the Aloud hooks. In macOS System Settings, give Hammerspoon Accessibility permission for the hotkeys.
-
-The installer:
-
-- creates the Aloud config, cache, log, and session directories;
-- starts a launchd daemon for speech generation;
-- installs Hammerspoon hotkeys;
-- installs Claude Code commands and Codex prompt shortcuts;
-- merges Aloud hooks into Claude Code and Codex settings;
-- writes timestamped backups before editing hook settings.
+Restart Claude Code and Codex after install. In Codex, run `/hooks` and trust
+the Aloud hooks if asked. Give Hammerspoon Accessibility permission for hotkeys.
 
 ## Use
 
-Inside Claude Code or Codex:
+In a Claude Code or Codex session:
 
 ```text
 aloud on
 ```
 
-Aloud arms only that session. Later replies in that session speak a short summary. The agent does not receive `aloud on` as a prompt.
-
-Claude Code also supports `/aloud-on` and `/aloud-off`. In Codex, use `aloud on` and `aloud off`; Codex prompt shortcuts are available as `/prompts:aloud-on` and `/prompts:aloud-off` after Codex reloads its prompt list.
-
 Controls:
 
-- `aloud off`: stop speaking this session.
-- `Cmd + Ctrl + H`: speak the full reply from the last session Aloud spoke.
-- `Cmd + Ctrl + .`: stop playback.
-- `aloud full`: speak the full reply from a terminal.
-- `aloud stop`: stop playback from a terminal.
+- `aloud off`: stop and disable Aloud for this session.
+- `aloud full`: speak the full response for the last spoken session.
+- `aloud repeat`: repeat the last attention alert.
+- `aloud stop`: stop playback.
+- `Cmd+Ctrl+H`: full response.
+- `Cmd+Ctrl+J`: repeat.
+- `Cmd+Ctrl+.`: stop.
 
-Multiple sessions are tracked separately. If session A speaks, the full-reply hotkey reads session A even if session B finishes later.
+Claude Code also gets `/aloud-on` and `/aloud-off`. Codex gets
+`/prompts:aloud-on` and `/prompts:aloud-off` after it reloads prompts.
 
-## Commands
+## Check
 
 ```bash
 aloud doctor
 aloud self-test --no-audio
 aloud voices
-aloud voices --play
-aloud uninstall
 ```
-
-`doctor` checks the installed files and hooks. `self-test --no-audio` checks the registry without using Kokoro or audio hardware. `voices --play` previews Kokoro voices on the current macOS output device.
 
 ## Files
 
-Aloud writes mutable files under `~/Library`:
+Aloud stores mutable files under `~/Library`:
 
-- config: `~/Library/Application Support/Aloud/config.json`
-- socket and session registry: `~/Library/Application Support/Aloud/`
-- WAV cache: `~/Library/Caches/Aloud/`
-- daemon log: `~/Library/Logs/Aloud/daemon.log`
-- launchd plist: `~/Library/LaunchAgents/io.aloud.daemon.plist`
+- `~/Library/Application Support/Aloud/config.json`
+- `~/Library/Application Support/Aloud/`
+- `~/Library/Caches/Aloud/`
+- `~/Library/Logs/Aloud/daemon.log`
+- `~/Library/LaunchAgents/io.aloud.daemon.plist`
 
-Edit `config.json` to change voice, speed, or retention settings.
-
-```bash
-launchctl unload ~/Library/LaunchAgents/io.aloud.daemon.plist
-launchctl load -w ~/Library/LaunchAgents/io.aloud.daemon.plist
-```
+Edit `config.json` to change voice, speed, and retention.
 
 ## Uninstall
 
 ```bash
 aloud uninstall
 pipx uninstall aloud
-```
-
-Uninstall removes the launchd plist, Hammerspoon hotkeys, Claude Code commands, Codex prompt shortcuts, and hook entries. It leaves state, cache, and logs in place for inspection.
-
-To remove those files too:
-
-```bash
 rm -rf ~/Library/Application\ Support/Aloud ~/Library/Caches/Aloud ~/Library/Logs/Aloud
 ```
 
-## Development
+`aloud uninstall` removes hooks, commands, prompt shortcuts, hotkeys, and the
+launchd plist. It leaves state files unless you remove them.
+
+## Develop
 
 ```bash
-git clone https://github.com/softcane/aloud.git
-cd aloud
 python3.11 -m venv .venv
 .venv/bin/python -m pip install -e '.[dev]'
 .venv/bin/ruff check .
 .venv/bin/ruff format --check .
-.venv/bin/pytest
-.venv/bin/aloud doctor
-.venv/bin/aloud self-test --no-audio
+.venv/bin/pytest -q
 ```
-
-Before release, also run live smoke tests in Claude Code and Codex CLI, then run one real audio smoke on the current macOS output device.
-
-## Credits
-
-Aloud depends on [Kokoro](https://github.com/hexgrad/kokoro) for local speech, [espeak-ng](https://github.com/espeak-ng/espeak-ng) for phonemization, and [Hammerspoon](https://www.hammerspoon.org) for hotkeys.
 
 ## License
 
-MIT.
+MIT
