@@ -205,6 +205,25 @@ def test_redaction_does_not_hide_plain_basic_text():
     assert "[redacted]" not in event.speech_text
 
 
+def test_completion_speech_preserves_inline_commands_and_filenames():
+    event = normalize_attention_event(
+        {
+            "source": "Codex",
+            "hook_event_name": "Stop",
+            "session_id": "SID-ID",
+            "cwd": "/repo/aloud",
+            "last_assistant_message": (
+                "Outcome\nRun `pytest tests/test_attention_events.py` and edit "
+                "`src/aloud/hooks.py`."
+            ),
+        }
+    )
+
+    assert event
+    assert "pytest tests/test_attention_events.py" in event.speech_text
+    assert "src/aloud/hooks.py" in event.speech_text
+
+
 def test_routine_events_and_user_interrupts_remain_silent():
     routine = normalize_attention_event(
         {

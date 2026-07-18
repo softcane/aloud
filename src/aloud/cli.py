@@ -284,6 +284,17 @@ def cmd_attention_self_test(args: argparse.Namespace) -> int:
                 },
             }
         )
+        player.active = False
+        daemon.current_priority = None
+        plain_question = record_and_speak(
+            {
+                "source": "Claude",
+                "hook_event_name": "Stop",
+                "session_id": sid_a,
+                "cwd": "/tmp/aloud",
+                "last_assistant_message": "I found two files. Which one should I inspect first?",
+            }
+        )
         plan = record_and_speak(
             {
                 "source": "Claude",
@@ -345,7 +356,17 @@ def cmd_attention_self_test(args: argparse.Namespace) -> int:
 
         sessions = registry.text_for(sid_a) and registry.text_for(sid_b)
         no_secret = all("secret-value" not in call for call in synth.calls)
-        checks = (completion, question, plan, permission, blocked, dedupe, priority, sessions)
+        checks = (
+            completion,
+            question,
+            plain_question,
+            plan,
+            permission,
+            blocked,
+            dedupe,
+            priority,
+            sessions,
+        )
         if all((*checks, no_secret)):
             print(
                 "attention self-test ok: completion, question, plan, permission, "

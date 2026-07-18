@@ -29,8 +29,15 @@ Use `foo`.
     assert "the result" in spoken
     assert "code block" in spoken
     assert "https://" not in spoken
-    assert "foo" not in spoken
+    assert "foo" in spoken
     assert "|" not in spoken
+
+
+def test_inline_code_preserves_commands_and_filenames():
+    spoken = to_speech("Run `pytest tests/test_attention_events.py` and edit `src/aloud/hooks.py`.")
+
+    assert "pytest tests/test_attention_events.py" in spoken
+    assert "src/aloud/hooks.py" in spoken
 
 
 def test_gist_uses_first_sentences_with_cap():

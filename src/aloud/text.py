@@ -8,12 +8,15 @@ def to_speech(markdown: str | None, max_chars: int = 1400) -> str:
     if not markdown:
         return ""
     text = re.sub(r"```.*?```", " (code block) ", markdown, flags=re.DOTALL)
-    text = re.sub(r"`[^`]*`", "", text)
+    text = re.sub(r"`([^`]*)`", r"\1", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
     text = re.sub(r"https?://\S+", "", text)
     text = re.sub(r"^\s*\|.*\|\s*$", "", text, flags=re.MULTILINE)
-    text = re.sub(r"[#>*_~`|]", "", text)
+    text = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", text)
+    text = re.sub(r"__([^_\n]+)__", r"\1", text)
+    text = re.sub(r"\*([^*\n]+)\*", r"\1", text)
+    text = re.sub(r"[#>~`|]", "", text)
     text = re.sub(r"^\s*[-+]\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"\n{2,}", ". ", text)
     text = re.sub(r"\s+([.,!?;:])", r"\1", text)

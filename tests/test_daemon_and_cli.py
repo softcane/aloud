@@ -69,3 +69,5 @@ def test_attention_self_test_no_audio_reports_required_summary(isolated_env, cap
         captured.out.strip() == "attention self-test ok: completion, question, plan, permission, "
         "blocked, dedupe, priority, sessions"
     )
+    session_records = list(isolated_env.sessions.glob("attention-self-test-a-*.json"))
+    assert session_records
